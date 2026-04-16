@@ -586,22 +586,23 @@ USER_INPUT=""
 
 read_user_input() {
   USER_INPUT=""
-  local line accumulated="" got_input=0 prompt
+  local line accumulated="" got_input=0
 
-  # When using `read -e` (readline mode), the prompt MUST be passed via -p.
-  # If you print it with printf first and then call `read -e`, readline doesn't
-  # know the cursor has advanced and won't echo your typing correctly.
-  prompt="$(printf '%sYou:%s ' "$C_USER" "$C_RESET")"
+  # We deliberately do NOT use `read -e` (readline mode). In some terminals
+  # (embedded IDE terminals, non-xterm emulators, shells without readline)
+  # `read -e` takes over echo handling and silently fails to display typed
+  # characters. Plain `read -r` relies on the terminal's native cooked-mode
+  # echo, which works reliably everywhere. The trade-off: no up-arrow history
+  # or arrow-key line editing — acceptable for a learning script.
+  printf '%sYou:%s ' "$C_USER" "$C_RESET"
 
   # read -r: don't interpret backslash escapes in the input itself
-  # read -e: use readline (arrow keys, history) — prompt via -p, not printf
-  # 2>/dev/null: suppress "read: -e: invalid option" on minimal shells
-  while IFS= read -r -e -p "$prompt" line 2>/dev/null; do
+  while IFS= read -r line; do
     got_input=1
     if [[ "$line" == *\\ ]]; then
       # Trailing backslash = line continuation: strip \ and keep reading
       accumulated+="${line%\\}"$'\n'
-      prompt='  > '
+      printf '  > '
     else
       accumulated+="$line"
       break
