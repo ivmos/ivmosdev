@@ -1,0 +1,4 @@
+# Stale bashgent conversation history files (left behind on crash)
+bashgent.*.json
+
+.DS_Store
