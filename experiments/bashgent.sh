@@ -45,6 +45,7 @@ USAGE:
 
 OPTIONS:
   --yes, -y       Auto-confirm destructive tool calls (yolo mode)
+  --debug, -d     Trace full Ollama requests/responses in gray
   --model NAME    Force a specific Ollama model name
   --help, -h      Show this help and exit
 
@@ -52,6 +53,7 @@ ENVIRONMENT:
   OLLAMA_HOST     Ollama server URL           (default: http://localhost:11434)
   OLLAMA_MODEL    Model override              (default: first from /api/tags)
   BASHGENT_YES    1 = skip all confirmations  (default: 0)
+  BASHGENT_DEBUG  1 = trace requests/responses (default: 0)
 
 TOOLS AVAILABLE TO THE MODEL:
   read_file      Read a file's contents                        (safe)
@@ -95,8 +97,9 @@ check_deps() {
 # ── §4  Configuration ─────────────────────────────────────────────────────────
 # All settings have environment-variable overrides so bashgent is composable.
 OLLAMA_HOST="${OLLAMA_HOST:-http://localhost:11434}"
-OLLAMA_MODEL="${OLLAMA_MODEL:-}"   # empty = auto-detect in §6
-BASHGENT_YES="${BASHGENT_YES:-0}"  # 1 = skip confirmation prompts
+OLLAMA_MODEL="${OLLAMA_MODEL:-}"       # empty = auto-detect in §6
+BASHGENT_YES="${BASHGENT_YES:-0}"      # 1 = skip confirmation prompts
+BASHGENT_DEBUG="${BASHGENT_DEBUG:-0}"  # 1 = trace Ollama requests/responses
 
 # Temp file for JSON conversation history — set in main(), cleaned on exit.
 HISTORY_FILE=""
@@ -109,10 +112,11 @@ if [[ -t 1 ]]; then
   C_TOOL=$'\033[93m'   # yellow       — tool call / result lines
   C_WARN=$'\033[91m'   # red          — confirmations and warnings
   C_DIM=$'\033[2m'     # dim          — secondary info
+  C_TRACE=$'\033[90m'  # bright black — light-gray debug traces
   C_BOLD=$'\033[1m'
   C_RESET=$'\033[0m'
 else
-  C_USER='' C_ASST='' C_TOOL='' C_WARN='' C_DIM='' C_BOLD='' C_RESET=''
+  C_USER='' C_ASST='' C_TOOL='' C_WARN='' C_DIM='' C_TRACE='' C_BOLD='' C_RESET=''
 fi
 
 print_banner() {
@@ -355,6 +359,15 @@ ollama_chat() {
     --argjson tools    "$TOOLS_JSON" \
     '{"model":$model,"messages":$messages,"tools":$tools,"stream":false}')"
 
+  # Debug trace: show the full outgoing request (pretty-printed, gray, stderr).
+  # We write to stderr so the main response (stdout) isn't polluted for the
+  # caller's `$(ollama_chat)` capture.
+  if [[ "$BASHGENT_DEBUG" == "1" ]]; then
+    printf '%s── → POST %s/api/chat ─────────────────────────%s\n' \
+      "$C_TRACE" "$OLLAMA_HOST" "$C_RESET" >&2
+    printf '%s%s%s\n' "$C_TRACE" "$(printf '%s' "$body" | jq '.')" "$C_RESET" >&2
+  fi
+
   # curl flags:
   #   -f  fail (non-zero exit) on HTTP 4xx/5xx
   #   -s  silent (no progress bar)
@@ -367,6 +380,16 @@ ollama_chat() {
       "${OLLAMA_HOST}/api/chat" 2>&1)"; then
     printf '\n%sOllama request failed:\n%s%s\n' "$C_WARN" "$response" "$C_RESET" >&2
     return 1
+  fi
+
+  # Debug trace: show the full response (pretty-printed, gray, stderr).
+  if [[ "$BASHGENT_DEBUG" == "1" ]]; then
+    printf '%s── ← response ────────────────────────────────%s\n' \
+      "$C_TRACE" "$C_RESET" >&2
+    # If response isn't valid JSON (e.g. server error HTML), fall back to raw.
+    printf '%s%s%s\n' "$C_TRACE" \
+      "$(printf '%s' "$response" | jq '.' 2>/dev/null || printf '%s' "$response")" \
+      "$C_RESET" >&2
   fi
 
   printf '%s' "$response"
@@ -382,12 +405,17 @@ confirm() {
     return 0  # --yes flag or BASHGENT_YES=1 bypasses all prompts
   fi
 
-  printf '\n%s⚠  Confirm: %s%s\n' "$C_WARN" "$1" "$C_RESET"
-  printf '%s   Proceed? [y/N]: %s' "$C_WARN" "$C_RESET"
+  # CRITICAL: prompts go to STDERR (>&2), not stdout. Tool functions run inside
+  # `$(dispatch_tool_call ...)` in the agent loop, which captures their stdout
+  # as the tool's return value. If we printed the prompt to stdout, it would
+  # vanish into that capture and the user would see nothing — while `read`
+  # silently blocked, giving the appearance of a hang.
+  printf '\n%s⚠  Confirm: %s%s\n'   "$C_WARN" "$1" "$C_RESET" >&2
+  printf '%s   Proceed? [y/N]: %s'  "$C_WARN" "$C_RESET"     >&2
 
   local answer
   read -r answer < /dev/tty || answer='n'
-  printf '\n'
+  printf '\n' >&2
 
   case "$answer" in
     y|Y|yes|YES) return 0 ;;
@@ -740,6 +768,8 @@ main() {
     case "$1" in
       --yes|-y)
         BASHGENT_YES=1; shift ;;
+      --debug|-d)
+        BASHGENT_DEBUG=1; shift ;;
       --model)
         [[ $# -ge 2 ]] || { printf 'ERROR: --model requires a model name\n' >&2; exit 1; }
         OLLAMA_MODEL="$2"; shift 2 ;;
