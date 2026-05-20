@@ -1,3 +1,16 @@
+# ivmosdev
+
+Personal experiments and study notes. Each item is self-contained — no shared build system.
+
+| Path | What it is |
+|------|------------|
+| [`experiments/bashgent/`](experiments/bashgent/bashgent.sh) | Claude-Code-style coding agent in a single Bash script, backed by [Ollama](https://ollama.com) (see below). |
+| [`experiments/traceroute/`](experiments/traceroute/traceroute.py) | Toy `traceroute` in Python — UDP probes + raw ICMP receive. |
+| [`study/otp/`](study/otp/totp2fa.sh) | RFC 6238 TOTP 2FA CLI demo: `enroll`, `generate`, `verify`, `watch`. |
+| [`study/prompt_injection/`](study/prompt_injection/) | Slide-deck PDFs from a prompt-injection talk. |
+
+---
+
 # bashgent
 
 A Claude-Code / OpenCode-style coding agent in a single Bash script, backed by a local [Ollama](https://ollama.com) server. Built as a **learning project** — the source code is heavily commented to explain how agentic AI tool-calling really works under the hood.
@@ -15,23 +28,25 @@ ollama serve &
 ollama pull qwen2.5-coder:7b           # or any model that supports tool-calling
 
 # 3. Run bashgent
-chmod +x bashgent
-./bashgent
+chmod +x experiments/bashgent/bashgent.sh
+./experiments/bashgent/bashgent.sh
 ```
 
 ## Options
 
 ```
-./bashgent [--yes] [--model MODEL] [--help]
+./experiments/bashgent/bashgent.sh [--yes] [--debug] [--model MODEL] [--help]
 ```
 
 | Flag / Env var   | Default                      | Description                               |
 |------------------|------------------------------|-------------------------------------------|
 | `--yes` / `-y`   | off                          | Skip all confirmation prompts (yolo mode) |
+| `--debug`        | off                          | Print full request/response traces in gray |
 | `--model NAME`   | first model from `/api/tags` | Override which Ollama model to use        |
 | `OLLAMA_HOST`    | `http://localhost:11434`     | Ollama server URL                         |
 | `OLLAMA_MODEL`   | auto-detected                | Same as `--model`                         |
 | `BASHGENT_YES`   | `0`                          | Same as `--yes`                           |
+| `BASHGENT_DEBUG` | `0`                          | Same as `--debug`                         |
 
 ## Example session
 
